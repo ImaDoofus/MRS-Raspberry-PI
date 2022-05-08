@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>John Server Manager</title>
+	<link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+	<link rel="manifest" href="favicon/site.webmanifest">
+	<link rel="mask-icon" href="favicon/safari-pinned-tab.svg" color="#5bbad5">
+	<meta name="msapplication-TileColor" content="#da532c">
+	<meta name="theme-color" content="#ffffff">
+	<link href="/start/styles.css" rel="stylesheet" type="text/css"></link>
+	<link href="/start/minecraftfont/font.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+
+	<div id="page-wrapper">
+
+		<div id="pc-status">
+			<span id="pc-status-text"></span>
+			<img id="pc-status-display"></img>
+			<button id="pc-status-start"></button>
+		</div>
+
+		<div id="server-list"></div>
+		<div id="extra-info"></div>
+
+	</div>
+
+	<script src="/socket.io/socket.io.js"></script>
+	<script src="helpers/server.js"></script>
+	<script>
+		var password = '<%= locals.password %>';
+
+		var servers = [];
+
+		document.getElementById('pc-status-start').addEventListener('click', function() {
+			socket.emit('startPC');
+			setComputerStatus('starting');
+		});
+
+		function setComputerStatus(status) {
+			var statusDisplay = document.getElementById('pc-status-display');
+			var startButton = document.getElementById('pc-status-start');
+			var statusText = document.getElementById('pc-status-text');
+			startButton.style.display = 'none';
+
+			switch(status) {
+				case 'online':
+					statusDisplay.src = 'assets/online.png';
+					statusText.innerHTML = 'John\'s Computer: Online';
+					break;
+				case 'offline':
+					statusDisplay.src = 'assets/offline.png';
+					startButton.style.display = 'block';
+					startButton.innerHTML = 'Start';
+					statusText.innerHTML = 'John\'s Computer: Offline';
+					break;
+				case 'starting':
+					statusDisplay.src = 'assets/starting.gif';
+					statusText.innerHTML = 'John\'s Computer: Starting';
+				break;
+			}
+		}
+
+		function openServerDynmap(server) {
+			var dynmapWrapper = document.createElement('div');
+			dynmapWrapper.id = 'extra-info-wrapper';
+
+			var dynmapHeader = document.createElement('div');
+			dynmapHeader.innerText = 'Dynmap: ' + server.name;
+			dynmapHeader.id = 'extra-info-header';
+
+			var dynmap = document.createElement('iframe');
+			dynmap.src = 'http://' + server.ip + ':' + server.dynmap;
+			dynmap.style.width = '100%';
+			dynmap.style.height = '100%';
+			dynmap.style.border = 'none';
+
+			var extraInfo = document.getElementById('extra-info');
+			while (extraInfo.children.length > 0) {
+				extraInfo.children[0].remove();
+			}
+			dynmapWrapper.appendChild(dynmapHeader);
+			dynmapWrapper.appendChild(dynmap);
+			extraInfo.appendChild(dynmapWrapper);
+		}
+
+		function openServerConsole(server) {
+			var consoleWrapper = document.createElement('div');
+			consoleWrapper.id = 'extra-info-wrapper';
+
+			var consoleHeader = document.createElement('div');
+			consoleHeader.innerText = 'Console: ' + server.name;
+			consoleHeader.id = 'extra-info-header';
+
+			var consoleOutput = server.console;
+			
+			var consoleInput = document.createElement('input');
+			consoleInput.id = 'console-input';
+			consoleInput.type = 'text';
+			consoleInput.placeholder = 'Enter command';
+			consoleInput.addEventListener('keyup', function(e) {
+				if (e.key === 'Enter') {
+					socket.emit('runCommand', { server: server.name, command: consoleInput.value });
+					consoleInput.value = '';
+				}
+			});
+			
+			var extraInfo = document.getElementById('extra-info');
+			while (extraInfo.children.length > 0) {
+				extraInfo.children[0].remove();
+			}
+			extraInfo.appendChild(consoleHeader);
+			extraInfo.appendChild(consoleOutput);
+			extraInfo.appendChild(consoleInput);
+			server.console.scrollTop = server.console.scrollHeight;
+		}
+
+		function writeConsole(server, message) {
+			var span = document.createElement('span');
+			var text = document.createTextNode(message);
+			span.appendChild(text);
+			if ( message.includes('ERROR') ) {
+				span.style.color = 'red';
+			} else if ( message.includes('WARN') ) {
+				span.style.color = 'orange';
+			}
+			server.console.appendChild(span);
+			server.console.appendChild(document.createElement('br'));
+			server.console.scrollTop = server.console.scrollHeight;
+		}
+
+		var socket = io();
+
+		socket.on('connect', () => {
+			socket.emit('auth', { password: password });
+		})
+
+		socket.on('computerStatus', (status) => {
+			switch (status) {
+				case 'starting':
+					setComputerStatus('starting');
+					break;
+				case 'online':
+					setComputerStatus('online');
+					break;
+				case 'offline':
+					setComputerStatus('offline');
+					break;
+			}
+		})
+
+		socket.on('serverList', (serverList) => {
+			serverList.forEach(server => {
+				var serverObject = new Server(server);
+				servers.push(serverObject);
+				serverObject.startServer = function() {
+					socket.emit('startServer', serverObject.name);
+					serverObject.status = 'starting';
+					serverObject.update();
+				}
+				serverObject.update();
+				document.getElementById('server-list').appendChild(serverObject.element);
+			});
+		})
+
+		socket.on('serverStopped', (serverName) => {
+			servers.forEach( server => {
+				if (server.name === serverName) {
+					server.status = 'offline';
+					server.update();
+				}
+			})
+		})
+
+		socket.on('serverStatus', (serverStatus) => {
+			console.log(serverStatus);
+			servers.forEach(server => {
+				if (server.name === serverStatus.server) {
+					// only update if changed since last update			
+					if (server.description !== serverStatus.status.description || server.playerCount !== serverStatus.status.players.online || server.maxPlayers !== serverStatus.status.players.max) {
+						server.status = 'online';
+						server.description = serverStatus.status.description;
+						server.playerCount = serverStatus.status.players.online;
+						server.maxPlayers = serverStatus.status.players.max;
+						server.favicon = serverStatus.status.favicon;
+						server.update();
+					}
+				}
+			});
+		})
+
+		socket.on('consoleStatus', (consoleStatus) => {
+			console.log(consoleStatus);
+			servers.forEach(server => {
+				if (server.name === consoleStatus.server) {
+					consoleStatus.lines.forEach(line => {
+						writeConsole(server, line);
+					});
+				}
+			});
+		});
+
+		socket.on('consoleOutput', (serverConsole) => {
+			servers.forEach(server => {
+				if (server.name === serverConsole.server) {
+					writeConsole(server, serverConsole.output);
+				}
+			});
+		})
+	</script>
+</body>
+</html>
