@@ -16,7 +16,6 @@ const io = new Server(server);
 
 const wol = require('wake_on_lan');
 
-
 const port = 3000
 const password = '123456'
 const macAddress = 'A6-00-48-CA-D0-35'
@@ -149,6 +148,8 @@ io.on('connection', (socket) => {
 			cachedServerStatuses = []
 			cachedServerList = []
 			cachedServerConsoles = []
+			computerStatus = 'offline'
+			socket.broadcast.emit('computerStatus', computerStatus )
 		}
 	})
 
