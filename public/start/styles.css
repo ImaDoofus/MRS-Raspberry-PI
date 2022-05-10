@@ -147,6 +147,7 @@ html {
 #extra-info {
 	width: 95%;
 	margin: 0 auto;
+	height: 25vw;
 }
 
 #extra-info-header {
@@ -169,4 +170,7 @@ html {
 #console-input {
 	width: 100%;
 	background-color: darkslategrey;
+}
+
+iframe {
 }

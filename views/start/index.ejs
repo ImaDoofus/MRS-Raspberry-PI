@@ -69,6 +69,7 @@
 		function openServerDynmap(server) {
 			var dynmapWrapper = document.createElement('div');
 			dynmapWrapper.id = 'extra-info-wrapper';
+			dynmapWrapper.style.height = '100%';
 
 			var dynmapHeader = document.createElement('div');
 			dynmapHeader.innerText = 'Dynmap: ' + server.name;
@@ -99,16 +100,22 @@
 
 			var consoleOutput = server.console;
 			
-			var consoleInput = document.createElement('input');
-			consoleInput.id = 'console-input';
-			consoleInput.type = 'text';
-			consoleInput.placeholder = 'Enter command';
-			consoleInput.addEventListener('keyup', function(e) {
-				if (e.key === 'Enter') {
-					socket.emit('runCommand', { server: server.name, command: consoleInput.value });
-					consoleInput.value = '';
-				}
-			});
+			if (server.consoleInputAllowed) {
+				var consoleInput = document.createElement('input');
+				consoleInput.id = 'console-input';
+				consoleInput.type = 'text';
+				consoleInput.placeholder = 'Enter command';
+				consoleInput.addEventListener('keyup', function(e) {
+					if (e.key === 'Enter') {
+						socket.emit('runCommand', { server: server.name, command: consoleInput.value, password: server.consolePassword });
+						consoleInput.value = '';
+					}
+				});
+			} else {
+				let consolePassword = prompt('Enter password');
+				server.consolePassword = consolePassword;
+				socket.emit('authConsole', { server: server.name, password: consolePassword });
+			}
 			
 			var extraInfo = document.getElementById('extra-info');
 			while (extraInfo.children.length > 0) {
@@ -116,7 +123,9 @@
 			}
 			extraInfo.appendChild(consoleHeader);
 			extraInfo.appendChild(consoleOutput);
-			extraInfo.appendChild(consoleInput);
+			if (server.consoleInputAllowed) {
+				extraInfo.appendChild(consoleInput);
+			}
 			server.console.scrollTop = server.console.scrollHeight;
 		}
 
@@ -211,6 +220,16 @@
 					writeConsole(server, serverConsole.output);
 				}
 			});
+		})
+
+		socket.on('consoleAuthenticated', (consoleName) => {
+			console.log(consoleName + ' authenticated');
+			servers.forEach(server => {
+				if (server.name === consoleName) {
+					server.consoleInputAllowed = true;
+					openServerConsole(server);
+				}
+			})
 		})
 	</script>
 </body>

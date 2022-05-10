@@ -17,15 +17,15 @@ const io = new Server(server);
 const wol = require('wake_on_lan');
 
 const port = 3000
-const password = '123456'
-const macAddress = 'A6-00-48-CA-D0-35'
-const ipAddress = '192.168.1.8'
+
+const { password, macAddress, ipAddress } = require('./config.json');
 
 var computerStatus = 'offline'
 var computerSocket = null
 var cachedServerList = [];
 var cachedServerStatuses = [];
 var cachedServerConsoles = [];
+var consolePasswords = [];
 
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }))
@@ -108,15 +108,6 @@ io.on('connection', (socket) => {
 		}
 	})
 
-	socket.on('runCommand', (data) => {
-		if (socket.password === password) {
-			if (computerSocket) {
-				console.log('runCommand', data)
-				computerSocket.emit('runCommand', data)
-			}
-		}
-	})
-
 	socket.on('serverStatus', (data) => {
 		socket.broadcast.emit('serverStatus', data)
 		for(var i = 0; i < cachedServerStatuses.length; i++) {
@@ -126,6 +117,37 @@ io.on('connection', (socket) => {
 			}
 		}
 		cachedServerStatuses.push(data)
+	})
+
+	// console stuff
+	socket.on('consolePasswords', (data) => {
+		consolePasswords = data;
+	})
+
+	socket.on('runCommand', (data) => {
+		if (socket.password === password) {
+			consolePasswords.forEach((consolePassword) => {
+				if (data.password === consolePassword.password) {	
+					if (computerSocket) {
+						console.log('runCommand', data)
+						computerSocket.emit('runCommand', data)
+					}
+				}
+			})
+		}
+	})
+
+	socket.on('authConsole', (data) => {
+		if (socket.password === password) {
+			consolePasswords.forEach((consolePassword) => {
+				if (data.server === consolePassword.server) {
+					if (data.password === consolePassword.password) {
+						console.log('authConsole', data)
+						socket.emit('consoleAuthenticated', data.server)
+					}
+				}
+			})
+		}
 	})
 
 	socket.on('consoleOutput', (data) => {
@@ -142,6 +164,7 @@ io.on('connection', (socket) => {
 		cachedServerConsoles.push({ server: data.server, lines: [data.output] })
 
 	})
+
 
 	socket.on('disconnect', () => {
 		if (socket === computerSocket) {
@@ -168,6 +191,7 @@ io.on('connection', (socket) => {
 			io.emit('serverStopped', name)
 		}
 	})
+
 })
 
 server.listen(port, () => {
